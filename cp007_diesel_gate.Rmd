@@ -1,0 +1,132 @@
+---
+title: "cp007_diesel_gate"
+author: "Pablo Revuelta Stobbs"
+date: "11/12/2020"
+output: html_document 
+---
+
+
+# Análisis Causal Impact del diesel gate para Volkswagen y BMW
+
+```{r message = FALSE, warning=FALSE}
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(xts)
+library(CausalImpact)
+library(quantmod)
+library(patchwork)
+library(tseries)
+```
+
+```{r message=FALSE, warning=FALSE}
+#Get the data from Yahoo
+
+BMW = getSymbols("BMW.DE", env = NULL, from = "2014-01-01", to = "2020-10-31")
+VOL = getSymbols("VOW.DE", env = NULL, from = "2014-01-01",to = "2020-10-31")
+
+# Generar rentabilidad mensual
+
+BMW = (BMW[,6])  #la 6 columna son los valores ajustados
+VOL = (VOL[,6])
+```
+
+```{r}
+vY <- cbind(BMW, VOL)
+autoplot(vY, facet = NULL)
+```
+
+
+```{r}
+
+vols_1 = cbind(VOL, BMW)
+vols_1 = na.omit(vols_1)
+
+bmw_1 = cbind(BMW, VOL)
+bmw_1 = na.omit(bmw_1)
+
+```
+
+
+```{r}
+start = "2014-01-01"
+end = "2020-10-31"
+quote = "AdjClose"
+vols_2 <- get.hist.quote(instrument = "VOW.DE", start, end, quote, compression = "w")
+bmw_2 <- get.hist.quote(instrument = "BMW.DE", start, end, quote, compression = "w")
+```
+
+Se escalan las bases de datos para que se observe las diferencias entre ambas series temporales.
+
+```{r}
+vols_2 <- scale(vols_2, center = TRUE, scale = TRUE)
+bmw_2 <- scale(bmw_2, center = TRUE, scale = TRUE)
+```
+
+
+```{r}
+autos <- cbind(vols_2, bmw_2)
+colnames(autos) <- c("VOL", "BMW")
+```
+
+Graficamos ambas series ya escaladas.
+
+```{r}
+autoplot(autos, facet = FALSE) + xlab("Date") + ylab("Adjusted Price")
+```
+
+Se observa un salto a finales de 2015 donde las empresas actuan de forma inversa.
+
+
+Se representa el impacto del diesel gate en Volkswagen, del 18 de septiembre de 2015, para ello se indica la fecha donde ocurre el diesel gate.
+
+ - El diesel gate fue un fenómeno que ocurrio en septiembre de 2015 donde salió a la luz el escandalo de emisiones contaminantes de los vehículos  de Volkswagen.
+
+```{r warning=FALSE, message=FALSE}
+pre_periodo <- as.Date(c("2014-01-01", "2015-09-18"))
+post_periodo <- as.Date(c("2015-09-19", "2020-10-31"))
+
+diesel_gate_vol <- CausalImpact(vols_1,
+                            pre_periodo,
+                            post_periodo, 
+                            model.args=list(niter=5000))
+```
+
+Graficamos los resultados para Volkswagen.
+
+```{r}
+summary(diesel_gate_vol)
+plot(diesel_gate_vol)
+plot(diesel_gate_vol, "original")
+```
+
+Se observa la predicción de Volkswagen si no hubiese ocurrido el fenómeno del diesel gate, en ese caso, se esperaba un aumento en el valor de cierre de la empresa, sin embargo, este fenómeno afecto negativamente a la empresa, haciendola bajar por debajo de los 100 puntos.
+
+```{r}
+summary(diesel_gate_vol, "report")
+```
+
+Se representa el impacto del diesel gate para BMW.
+
+```{r}
+diesel_gate_bmw <- CausalImpact(bmw_1,
+                                pre_periodo,
+                                post_periodo,
+                                model.args = list(niter = 5000))
+```
+
+Se grafican los resultados del modelo.
+
+```{r}
+summary(diesel_gate_bmw)
+plot(diesel_gate_bmw)
+plot(diesel_gate_bmw, "original")
+```
+
+Se observa como este fenómeno afecto positivamente a BMW, ya que su predicción posicionaba su valor por debajo del valor real, sin embargo, gracias a este fenómeno se observa como BMW tiene un repunte a finales de 2015.
+
+```{r}
+summary(diesel_gate_bmw, "report")
+```
